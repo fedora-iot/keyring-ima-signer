@@ -1,5 +1,5 @@
 [package]
-name = "ima-keyring-signer"
+name = "keyring-ima-signer"
 version = "0.1.0"
 authors = ["Patrick Uiterwijk <patrick@puiterwijk.org>"]
 edition = "2018"
