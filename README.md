@@ -32,7 +32,7 @@ Encode the certificate for verification:
 
 Verify the signature:
 
-`$ evmctl ima_verify --sigfile --key certificate.pem -v myfile.txt`
+`$ evmctl ima_verify --sigfile --key certificate.der -v myfile.txt`
 
 
 ## Usage
