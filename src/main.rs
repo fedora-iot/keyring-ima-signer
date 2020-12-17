@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 const IMA_DIGSIG_HEADER: u8 = 0x3;
 const IMA_DIGSIG_V2: u8 = 0x2;
 
-const XATTR_IMA: &'static str = "security.ima";
+const XATTR_IMA: &str = "security.ima";
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[allow(dead_code)] // Many of these we never use, but we need them to keep the numbers correct
@@ -101,7 +101,7 @@ fn sign_digest(
     };
     let mut signature = signkey
         .sign(&options, digest)
-        .with_context(|| format!("Error signing data"))?;
+        .with_context(|| "Error signing data".to_string())?;
 
     // https://github.com/mathstuf/rust-keyutils/pull/55
     unsafe {
@@ -136,12 +136,12 @@ fn hash_and_sign(
 }
 
 fn get_keyid_and_keylen_from_cert(cert_path: &str) -> Result<(Vec<u8>, usize)> {
-    let cert_contents = fs::read(cert_path)
-        .with_context(|| format!("Error reading certificate from path {}", cert_path))?;
+    let cert_contents =
+        fs::read(cert_path).with_context(|| "Error reading certificate".to_string())?;
 
     let (rem, decoded_pem) = x509_parser::pem::parse_x509_pem(&cert_contents)
-        .with_context(|| format!("Error parsing certificate at path {}", cert_path))?;
-    if rem.len() != 0 {
+        .with_context(|| "Error parsing certificate".to_string())?;
+    if !rem.is_empty() {
         bail!("Certificate has remaining PEM bytes");
     }
     if decoded_pem.label != "CERTIFICATE" {
@@ -151,8 +151,8 @@ fn get_keyid_and_keylen_from_cert(cert_path: &str) -> Result<(Vec<u8>, usize)> {
         );
     }
     let (rem, x509_cert) = x509_parser::parse_x509_certificate(&decoded_pem.contents)
-        .with_context(|| format!("Error parsing certificate DER at path {}", cert_path))?;
-    if rem.len() != 0 {
+        .with_context(|| "Error parsing certificate DER".to_string())?;
+    if !rem.is_empty() {
         bail!("Certificate has remaining DER bytes");
     }
     if x509_cert
@@ -200,7 +200,7 @@ fn write_ima_sig(filename: &Path, imahdr: &[u8], sigfile: bool) -> Result<()> {
             .with_context(|| format!("Unable to sync signature file {}", &sigfilename))
     } else {
         xattr::set(filename, XATTR_IMA, imahdr)
-            .with_context(|| format!("Unable to set the IMA xattr"))
+            .with_context(|| "Unable to set the IMA xattr".to_string())
     }
 }
 
@@ -211,7 +211,7 @@ fn main() -> Result<()> {
 
     let key_description = args
         .next()
-        .with_context(|| format!("Please provide key description"))?;
+        .with_context(|| "Please provide key description".to_string())?;
     let key_description_copy = key_description.clone();
     let signkey =
         Key::request::<keyutils::keytypes::Asymmetric, _, _, _>(key_description, None, None)
@@ -224,13 +224,13 @@ fn main() -> Result<()> {
 
     let cert_path = args
         .next()
-        .with_context(|| format!("Please provide public certificate path"))?;
+        .with_context(|| "Please provide public certificate path".to_string())?;
     let (keyid, keylen) = get_keyid_and_keylen_from_cert(&cert_path)
         .with_context(|| format!("Unable to parse public certificate {}", &cert_path))?;
 
     let hash_algo = args
         .next()
-        .with_context(|| format!("Please provide hash algorithm"))?;
+        .with_context(|| "Please provide hash algorithm".to_string())?;
     let hash_algo = HashAlgo::try_from(&hash_algo[..])
         .with_context(|| format!("Unable to parse hash algo {}", &hash_algo))?;
 
