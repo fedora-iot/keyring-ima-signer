@@ -204,6 +204,21 @@ fn write_ima_sig(filename: &Path, imahdr: &[u8], sigfile: bool) -> Result<()> {
     }
 }
 
+fn update_presigned(args: env::Args) -> Result<()> {
+    for filename in args {
+        let filename = Path::new(&filename);
+        let sigfilename = format!("{}.sig", filename.display());
+        let sigfile = Path::new(&sigfilename);
+
+        let sighdr = fs::read(sigfile)
+            .with_context(|| format!("Error reading signature file {}", sigfile.display()))?;
+        write_ima_sig(filename, &sighdr, false)?;
+        fs::remove_file(sigfile)
+            .with_context(|| format!("Error deleting signature file {}", sigfile.display()))?;
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let mut args = env::args();
     // Skip the path
@@ -212,6 +227,9 @@ fn main() -> Result<()> {
     let key_description = args
         .next()
         .with_context(|| "Please provide key description".to_string())?;
+    if key_description == "--presigned" {
+        return update_presigned(args);
+    }
     let key_description_copy = key_description.clone();
     let signkey =
         Key::request::<keyutils::keytypes::Asymmetric, _, _, _>(key_description, None, None)

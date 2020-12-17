@@ -26,6 +26,10 @@ In order to embed the signature as extended attribute, run:
 
 `$ cargo run -- $description certificate.pem sha256 -- --xattr myfile.txt`
 
+If you decide to first make a sigfile (default), and then later on want to add it as an extended attribute, run:
+
+`$ cargo run -- --presigned myfile.txt`
+
 Encode the certificate for verification:
 
 `$ openssl x509 -in certificate.pem -inform PEM -out certificate.der -outform DER`
