@@ -89,7 +89,7 @@ fn build_ima_signature(keyid: &[u8], hash_algo: &HashAlgo, signature: &[u8]) -> 
     buffer
 }
 
-fn sign_digest(signkey: &Key, hash_algo: &HashAlgo, digest: &[u8]) -> Result<Vec<u8>> {
+fn sign_digest(signkey: &Key, hash_algo: &HashAlgo, digest: &[u8], siglen: usize) -> Result<Vec<u8>> {
     let options = PublicKeyOptions {
         encoding: Some(KeyctlEncoding::RsassaPkcs1V15),
         hash: Some((*hash_algo).try_into()?),
@@ -101,13 +101,13 @@ fn sign_digest(signkey: &Key, hash_algo: &HashAlgo, digest: &[u8]) -> Result<Vec
     // https://github.com/mathstuf/rust-keyutils/pull/55
     unsafe {
         // This is equal to the number of bytes in the key
-        signature.set_len(2048 / 8);
+        signature.set_len(siglen);
     }
 
     Ok(signature)
 }
 
-fn hash_and_sign(signkey: &Key, hash_algo: &HashAlgo, data: &[u8]) -> Result<Vec<u8>> {
+fn hash_and_sign(signkey: &Key, hash_algo: &HashAlgo, data: &[u8], siglen: usize) -> Result<Vec<u8>> {
     let digest = match hash_algo {
         HashAlgo::Sha1 => {
             let mut hasher = Sha1::new();
@@ -122,32 +122,36 @@ fn hash_and_sign(signkey: &Key, hash_algo: &HashAlgo, data: &[u8]) -> Result<Vec
         _ => bail!("Unsupported hash algorithm {:?} selected", hash_algo),
     };
 
-    sign_digest(signkey, hash_algo, &digest)
+    sign_digest(signkey, hash_algo, &digest, siglen)
 }
 
-fn get_keyid_from_cert(cert_path: &str) -> Result<Vec<u8>> {
+fn get_keyid_and_keylen_from_cert(cert_path: &str) -> Result<(Vec<u8>, usize)> {
     let cert_contents = fs::read(cert_path).with_context(|| format!("Error reading certificate from path {}", cert_path))?;
 
     let (rem, decoded_pem) = x509_parser::pem::parse_x509_pem(&cert_contents).with_context(|| format!("Error parsing certificate at path {}", cert_path))?;
     if rem.len() != 0 {
-        bail!("Certificate at {} has remaining PEM bytes", cert_path);
+        bail!("Certificate has remaining PEM bytes");
     }
     if decoded_pem.label != "CERTIFICATE" {
-        bail!("Certificate at {} has label {}, not 'CERTIFICATE'", cert_path, decoded_pem.label);
+        bail!("Certificate has label '{}', not 'CERTIFICATE'", decoded_pem.label);
     }
     let (rem, x509_cert) = x509_parser::parse_x509_certificate(&decoded_pem.contents).with_context(|| format!("Error parsing certificate DER at path {}", cert_path))?;
     if rem.len() != 0 {
-        bail!("Certificate at {} has remaining DER bytes", cert_path);
+        bail!("Certificate has remaining DER bytes");
+    }
+    if x509_cert.tbs_certificate.subject_pki.algorithm.algorithm.to_id_string() != "1.2.840.113549.1.1.1" {
+        bail!("Certificate has invalid OID: '{}' != '1.2.840.113549.1.1.1' (RSA)", x509_cert.tbs_certificate.subject_pki.algorithm.algorithm.to_id_string());
     }
 
     let pubkey = x509_cert.tbs_certificate.subject_pki.subject_public_key.data;
+    let keylen = pubkey.len() - 14;
 
     let mut hasher = Sha1::new();
     hasher.update(pubkey);
     let digest = hasher.digest().bytes();
     let keyid_bytes = &digest[16..20];
 
-    Ok(keyid_bytes.to_vec())
+    Ok((keyid_bytes.to_vec(), keylen))
 }
 
 fn write_ima_sig(filename: &Path, imahdr: &[u8], sigfile: bool) -> Result<()> {
@@ -171,7 +175,7 @@ fn main() -> Result<()> {
     let signkey = Key::request::<keyutils::keytypes::Asymmetric, _, _, _>(key_description, None, None).with_context(|| format!("Unable to find key with description {}", &key_description_copy))?;
 
     let cert_path = args.next().with_context(|| format!("Please provide public certificate path"))?;
-    let keyid = get_keyid_from_cert(&cert_path).with_context(|| format!("Unable to parse public certificate {}", &cert_path))?;
+    let (keyid, keylen) = get_keyid_and_keylen_from_cert(&cert_path).with_context(|| format!("Unable to parse public certificate {}", &cert_path))?;
 
     let hash_algo = args.next().with_context(|| format!("Please provide hash algorithm"))?;
     let hash_algo = HashAlgo::try_from(&hash_algo[..]).with_context(|| format!("Unable to parse hash algo {}", &hash_algo))?;
@@ -188,7 +192,7 @@ fn main() -> Result<()> {
 
         let data = fs::read(filepath).with_context(|| format!("Error reading {}", filepath.display()))?;
 
-        let signature = hash_and_sign(&signkey, &hash_algo, &data).with_context(|| format!("Error signing {}", filepath.display()))?;
+        let signature = hash_and_sign(&signkey, &hash_algo, &data, keylen).with_context(|| format!("Error signing {}", filepath.display()))?;
 
         let hdr = build_ima_signature(&keyid, &hash_algo, &signature);
 
