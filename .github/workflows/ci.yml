@@ -1,0 +1,44 @@
+name: Run tests
+on:
+  - push
+  - pull_request
+jobs:
+  formatting:
+    name: Check formatting
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+
+  tests:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install evmctl
+      run: sudo apt-get install ima-evm-utils
+
+    - name: Build
+      run: cargo build
+
+    - name: Create key
+      run: "openssl genrsa | openssl pkcs8 -topk8 -nocrypt -outform DER -out privatekey.der"
+    - name: Create public certificate
+      run: openssl req -x509 -key privatekey.der -out certificate.pem -days 365 -keyform DER -subj "/CN=Testkey"
+    - name: Encode certificate for verification
+      run: openssl x509 -in certificate.pem -inform PEM -out certificate.der -outform DER
+    - name: Load pkcs8 parser module
+      run: sudo modprobe pkcs8_key_parser
+    - name: Load key onto keyring
+      run: "keyctl padd asymmetric testkey @s <privatekey.der"
+
+    # sudo here is required to set the extended attribute on Cargo.lock
+    - name: Sign files
+      run: sudo ./target/debug/ima-keyring-signer testkey certificate.pem sha256 -- Cargo.toml --xattr Cargo.lock
+
+    - name: Verify file - sigfile
+      run: evmctl ima_verify --sigfile --key certificate.der -vvvv Cargo.toml
+
+    - name: Verify file - xattr
+      run: evmctl ima_verify --key certificate.der -vvvv Cargo.lock
