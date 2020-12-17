@@ -37,10 +37,16 @@ jobs:
 
     # sudo here is required to set the extended attribute on Cargo.lock
     - name: Sign files
-      run: sudo ./target/debug/keyring-ima-signer testkey certificate.pem sha256 -- Cargo.toml --xattr Cargo.lock
+      run: sudo ./target/debug/keyring-ima-signer testkey certificate.pem sha256 -- Cargo.toml --xattr Cargo.lock --sigfile LICENSE
+
+    - name: Move sigfile to xattr
+      run: sudo ./target/debug/keyring-ima-signer --presigned LICENSE
 
     - name: Verify file - sigfile
       run: evmctl ima_verify --sigfile --key certificate.der -vvvv Cargo.toml
 
     - name: Verify file - xattr
       run: evmctl ima_verify --key certificate.der -vvvv Cargo.lock
+
+    - name: Verify file - moved xattr
+      run: evmctl ima_verify --key certificate.der -vvvv LICENSE
