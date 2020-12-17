@@ -1,4 +1,4 @@
-# ima-keyring-signer
+# keyring-ima-signer
 IMA file signer using keyring asymmetric keys
 
 This tool can be used to sign files with IMA signatures with a key that's stored
@@ -38,7 +38,7 @@ Verify the signature:
 ## Usage
 The general usage:
 
-`ima-keyring-signer <key-description> <public-pem-cert-path> <hash-algo> [file ...]`
+`keyring-ima-signer <key-description> <public-pem-cert-path> <hash-algo> [file ...]`
 
 The supported hash algorithms are: sha1, sha256
 
