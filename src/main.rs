@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Error, Result};
-use sha1::Sha1;
+use openssl::hash::{hash, MessageDigest};
 
 mod ima;
 mod signing;
@@ -45,6 +45,17 @@ impl TryFrom<&str> for HashAlgo {
     }
 }
 
+impl TryFrom<&HashAlgo> for MessageDigest {
+    type Error = Error;
+    fn try_from(hash_algo: &HashAlgo) -> Result<Self> {
+        match hash_algo {
+            HashAlgo::Sha1 => Ok(MessageDigest::sha1()),
+            HashAlgo::Sha256 => Ok(MessageDigest::sha256()),
+            _ => Err(anyhow!("Unsupported hash algorithm: {:?}", hash_algo)),
+        }
+    }
+}
+
 impl HashAlgo {
     fn to_pkey_opt(&self) -> Result<&'static str> {
         match self {
@@ -55,7 +66,7 @@ impl HashAlgo {
     }
 }
 
-fn get_keyid_and_keylen_from_cert(cert_path: &str) -> Result<(Vec<u8>, usize)> {
+fn get_keyid_from_cert(cert_path: &str) -> Result<Vec<u8>> {
     let cert_contents =
         fs::read(cert_path).with_context(|| "Error reading certificate".to_string())?;
 
@@ -77,14 +88,11 @@ fn get_keyid_and_keylen_from_cert(cert_path: &str) -> Result<(Vec<u8>, usize)> {
         .public_key_to_der_pkcs1()
         .with_context(|| "Error building DER representation of public key".to_string())?;
 
-    let mut hasher = Sha1::new();
-    hasher.update(&pubkey_bytes);
-    let digest = hasher.digest().bytes();
+    let digest = hash(MessageDigest::sha1(), &pubkey_bytes)
+        .with_context(|| "Error hashing public key".to_string())?;
     let keyid_bytes = &digest[16..20];
 
-    let keylen = pubkey_rsa.size();
-
-    Ok((keyid_bytes.to_vec(), keylen as usize))
+    Ok(keyid_bytes.to_vec())
 }
 
 fn update_presigned(args: env::Args) -> Result<()> {
@@ -119,7 +127,7 @@ fn main() -> Result<()> {
     let cert_path = args
         .next()
         .with_context(|| "Please provide public certificate path".to_string())?;
-    let (keyid, keylen) = get_keyid_and_keylen_from_cert(&cert_path)
+    let keyid = get_keyid_from_cert(&cert_path)
         .with_context(|| format!("Unable to parse public certificate {}", &cert_path))?;
 
     let hash_algo = args
@@ -148,7 +156,7 @@ fn main() -> Result<()> {
         let data =
             fs::read(filepath).with_context(|| format!("Error reading {}", filepath.display()))?;
 
-        let signature = signing::hash_and_sign(&signkey, &hash_algo, &data, keylen)
+        let signature = signing::hash_and_sign(&signkey, &hash_algo, &data)
             .with_context(|| format!("Error signing {}", filepath.display()))?;
 
         let hdr = ima::build_signature_header(&keyid, &hash_algo, &signature);
