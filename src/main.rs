@@ -139,54 +139,32 @@ fn get_keyid_and_keylen_from_cert(cert_path: &str) -> Result<(Vec<u8>, usize)> {
     let cert_contents =
         fs::read(cert_path).with_context(|| "Error reading certificate".to_string())?;
 
-    let (rem, decoded_pem) = x509_parser::pem::parse_x509_pem(&cert_contents)
-        .with_context(|| "Error parsing certificate".to_string())?;
-    if !rem.is_empty() {
-        bail!("Certificate has remaining PEM bytes");
-    }
-    if decoded_pem.label != "CERTIFICATE" {
-        bail!(
-            "Certificate has label '{}', not 'CERTIFICATE'",
-            decoded_pem.label
-        );
-    }
-    let (rem, x509_cert) = x509_parser::parse_x509_certificate(&decoded_pem.contents)
-        .with_context(|| "Error parsing certificate DER".to_string())?;
-    if !rem.is_empty() {
-        bail!("Certificate has remaining DER bytes");
-    }
-    if x509_cert
-        .tbs_certificate
-        .subject_pki
-        .algorithm
-        .algorithm
-        .to_id_string()
-        != "1.2.840.113549.1.1.1"
-    {
-        bail!(
-            "Certificate has invalid OID: '{}' != '1.2.840.113549.1.1.1' (RSA)",
-            x509_cert
-                .tbs_certificate
-                .subject_pki
-                .algorithm
-                .algorithm
-                .to_id_string()
-        );
-    }
+    let cert = if cert_contents[0] == b'-' {
+        // Assume this is PEM
+        openssl::x509::X509::from_pem(&cert_contents)
+            .with_context(|| "Error parsing certificate PEM".to_string())
+    } else {
+        openssl::x509::X509::from_der(&cert_contents)
+            .with_context(|| "Error parsing certificate DER".to_string())
+    }?;
 
-    let pubkey = x509_cert
-        .tbs_certificate
-        .subject_pki
-        .subject_public_key
-        .data;
-    let keylen = pubkey.len() - 14;
+    let pubkey_rsa = cert
+        .public_key()
+        .with_context(|| "Error getting certificate public key".to_string())?
+        .rsa()
+        .with_context(|| "Error parsing RSA key".to_string())?;
+    let pubkey_bytes = pubkey_rsa
+        .public_key_to_der_pkcs1()
+        .with_context(|| "Error building DER representation of public key".to_string())?;
 
     let mut hasher = Sha1::new();
-    hasher.update(pubkey);
+    hasher.update(&pubkey_bytes);
     let digest = hasher.digest().bytes();
     let keyid_bytes = &digest[16..20];
 
-    Ok((keyid_bytes.to_vec(), keylen))
+    let keylen = pubkey_rsa.size();
+
+    Ok((keyid_bytes.to_vec(), keylen as usize))
 }
 
 fn write_ima_sig(filename: &Path, imahdr: &[u8], sigfile: bool) -> Result<()> {
