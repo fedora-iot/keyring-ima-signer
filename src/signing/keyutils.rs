@@ -77,7 +77,7 @@ pub fn keyctl_pkey_sign(
     info: &str,
     data: &[u8],
     buffer: &mut Vec<u8>,
-) -> Result<i64> {
+) -> Result<usize> {
     let params = PKeyOpParamsKernel {
         key_id: key.get(),
         in_len: data.len() as u32,
@@ -86,7 +86,7 @@ pub fn keyctl_pkey_sign(
     };
 
     let info_cstr = cstring(info).with_context(|| "Error building info cstring".to_string())?;
-    unsafe {
+    let respsize = unsafe {
         keyctl!(
             libc::KEYCTL_PKEY_SIGN,
             &params as *const PKeyOpParamsKernel,
@@ -95,7 +95,9 @@ pub fn keyctl_pkey_sign(
             buffer.as_mut_ptr(),
         )
     }
-    .with_context(|| "Error returned during signing".to_string())
+    .with_context(|| "Error returned during signing".to_string())?;
+
+    Ok(respsize as usize)
 }
 
 type KeyringSerial = NonZeroI32;
@@ -145,7 +147,7 @@ impl Key {
         let sz = keyctl_pkey_sign(self.serial, &info, data, &mut buffer)
             .with_context(|| "Error requesting signature".to_string())?;
         unsafe {
-            buffer.set_len(sz as usize);
+            buffer.set_len(sz);
         }
         Ok(buffer)
     }
