@@ -1,13 +1,13 @@
 use std::convert::{TryFrom, TryInto};
 use std::env;
 use std::fs::{self, File};
-use std::path::Path;
 use std::io::prelude::*;
+use std::path::Path;
 
-use anyhow::{Context, Result, bail, Error, anyhow};
+use anyhow::{anyhow, bail, Context, Error, Result};
 use keyutils::{Key, KeyctlEncoding, KeyctlHash, PublicKeyOptions};
-use sha2::{Digest, Sha256};
 use sha1::Sha1;
+use sha2::{Digest, Sha256};
 
 const IMA_DIGSIG_HEADER: u8 = 0x3;
 const IMA_DIGSIG_V2: u8 = 0x2;
@@ -15,25 +15,25 @@ const IMA_DIGSIG_V2: u8 = 0x2;
 const XATTR_IMA: &'static str = "security.ima";
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
-#[allow(dead_code)]  // Many of these we never use, but we need them to keep the numbers correct
+#[allow(dead_code)] // Many of these we never use, but we need them to keep the numbers correct
 enum HashAlgo {
-	Md4,
-	Md5,
-	Sha1,
-	RipeMd160,
-	Sha256,
-	Sha384,
-	Sha512,
-	Sha224,
-	RipeMd128,
-	RipeMd256,
-	RipeMd320,
-	Wp256,
-	Wp384,
-	Wp512,
-	Tgr128,
-	Tgr160,
-	Tgr192,
+    Md4,
+    Md5,
+    Sha1,
+    RipeMd160,
+    Sha256,
+    Sha384,
+    Sha512,
+    Sha224,
+    RipeMd128,
+    RipeMd256,
+    RipeMd320,
+    Wp256,
+    Wp384,
+    Wp512,
+    Tgr128,
+    Tgr160,
+    Tgr192,
     Sm3256,
     Streebog256,
     Streebog512,
@@ -89,7 +89,12 @@ fn build_ima_signature(keyid: &[u8], hash_algo: &HashAlgo, signature: &[u8]) -> 
     buffer
 }
 
-fn sign_digest(signkey: &Key, hash_algo: &HashAlgo, digest: &[u8], siglen: usize) -> Result<Vec<u8>> {
+fn sign_digest(
+    signkey: &Key,
+    hash_algo: &HashAlgo,
+    digest: &[u8],
+    siglen: usize,
+) -> Result<Vec<u8>> {
     let options = PublicKeyOptions {
         encoding: Some(KeyctlEncoding::RsassaPkcs1V15),
         hash: Some((*hash_algo).try_into()?),
@@ -107,7 +112,12 @@ fn sign_digest(signkey: &Key, hash_algo: &HashAlgo, digest: &[u8], siglen: usize
     Ok(signature)
 }
 
-fn hash_and_sign(signkey: &Key, hash_algo: &HashAlgo, data: &[u8], siglen: usize) -> Result<Vec<u8>> {
+fn hash_and_sign(
+    signkey: &Key,
+    hash_algo: &HashAlgo,
+    data: &[u8],
+    siglen: usize,
+) -> Result<Vec<u8>> {
     let digest = match hash_algo {
         HashAlgo::Sha1 => {
             let mut hasher = Sha1::new();
@@ -118,7 +128,7 @@ fn hash_and_sign(signkey: &Key, hash_algo: &HashAlgo, data: &[u8], siglen: usize
             let mut hasher = Sha256::new();
             hasher.update(&data);
             hasher.finalize().as_slice().to_vec()
-        },
+        }
         _ => bail!("Unsupported hash algorithm {:?} selected", hash_algo),
     };
 
@@ -126,24 +136,49 @@ fn hash_and_sign(signkey: &Key, hash_algo: &HashAlgo, data: &[u8], siglen: usize
 }
 
 fn get_keyid_and_keylen_from_cert(cert_path: &str) -> Result<(Vec<u8>, usize)> {
-    let cert_contents = fs::read(cert_path).with_context(|| format!("Error reading certificate from path {}", cert_path))?;
+    let cert_contents = fs::read(cert_path)
+        .with_context(|| format!("Error reading certificate from path {}", cert_path))?;
 
-    let (rem, decoded_pem) = x509_parser::pem::parse_x509_pem(&cert_contents).with_context(|| format!("Error parsing certificate at path {}", cert_path))?;
+    let (rem, decoded_pem) = x509_parser::pem::parse_x509_pem(&cert_contents)
+        .with_context(|| format!("Error parsing certificate at path {}", cert_path))?;
     if rem.len() != 0 {
         bail!("Certificate has remaining PEM bytes");
     }
     if decoded_pem.label != "CERTIFICATE" {
-        bail!("Certificate has label '{}', not 'CERTIFICATE'", decoded_pem.label);
+        bail!(
+            "Certificate has label '{}', not 'CERTIFICATE'",
+            decoded_pem.label
+        );
     }
-    let (rem, x509_cert) = x509_parser::parse_x509_certificate(&decoded_pem.contents).with_context(|| format!("Error parsing certificate DER at path {}", cert_path))?;
+    let (rem, x509_cert) = x509_parser::parse_x509_certificate(&decoded_pem.contents)
+        .with_context(|| format!("Error parsing certificate DER at path {}", cert_path))?;
     if rem.len() != 0 {
         bail!("Certificate has remaining DER bytes");
     }
-    if x509_cert.tbs_certificate.subject_pki.algorithm.algorithm.to_id_string() != "1.2.840.113549.1.1.1" {
-        bail!("Certificate has invalid OID: '{}' != '1.2.840.113549.1.1.1' (RSA)", x509_cert.tbs_certificate.subject_pki.algorithm.algorithm.to_id_string());
+    if x509_cert
+        .tbs_certificate
+        .subject_pki
+        .algorithm
+        .algorithm
+        .to_id_string()
+        != "1.2.840.113549.1.1.1"
+    {
+        bail!(
+            "Certificate has invalid OID: '{}' != '1.2.840.113549.1.1.1' (RSA)",
+            x509_cert
+                .tbs_certificate
+                .subject_pki
+                .algorithm
+                .algorithm
+                .to_id_string()
+        );
     }
 
-    let pubkey = x509_cert.tbs_certificate.subject_pki.subject_public_key.data;
+    let pubkey = x509_cert
+        .tbs_certificate
+        .subject_pki
+        .subject_public_key
+        .data;
     let keylen = pubkey.len() - 14;
 
     let mut hasher = Sha1::new();
@@ -157,11 +192,15 @@ fn get_keyid_and_keylen_from_cert(cert_path: &str) -> Result<(Vec<u8>, usize)> {
 fn write_ima_sig(filename: &Path, imahdr: &[u8], sigfile: bool) -> Result<()> {
     if sigfile {
         let sigfilename = format!("{}.sig", filename.display());
-        let mut file = File::create(&sigfilename).with_context(|| format!("Unable to open signature file {}", &sigfilename))?;
-        file.write_all(imahdr).with_context(|| format!("Unable to write signature file {}", &sigfilename))?;
-        file.sync_all().with_context(|| format!("Unable to sync signature file {}", &sigfilename))
+        let mut file = File::create(&sigfilename)
+            .with_context(|| format!("Unable to open signature file {}", &sigfilename))?;
+        file.write_all(imahdr)
+            .with_context(|| format!("Unable to write signature file {}", &sigfilename))?;
+        file.sync_all()
+            .with_context(|| format!("Unable to sync signature file {}", &sigfilename))
     } else {
-        xattr::set(filename, XATTR_IMA, imahdr).with_context(|| format!("Unable to set the IMA xattr"))
+        xattr::set(filename, XATTR_IMA, imahdr)
+            .with_context(|| format!("Unable to set the IMA xattr"))
     }
 }
 
@@ -170,15 +209,30 @@ fn main() -> Result<()> {
     // Skip the path
     args.next();
 
-    let key_description = args.next().with_context(|| format!("Please provide key description"))?;
+    let key_description = args
+        .next()
+        .with_context(|| format!("Please provide key description"))?;
     let key_description_copy = key_description.clone();
-    let signkey = Key::request::<keyutils::keytypes::Asymmetric, _, _, _>(key_description, None, None).with_context(|| format!("Unable to find key with description {}", &key_description_copy))?;
+    let signkey =
+        Key::request::<keyutils::keytypes::Asymmetric, _, _, _>(key_description, None, None)
+            .with_context(|| {
+                format!(
+                    "Unable to find key with description {}",
+                    &key_description_copy
+                )
+            })?;
 
-    let cert_path = args.next().with_context(|| format!("Please provide public certificate path"))?;
-    let (keyid, keylen) = get_keyid_and_keylen_from_cert(&cert_path).with_context(|| format!("Unable to parse public certificate {}", &cert_path))?;
+    let cert_path = args
+        .next()
+        .with_context(|| format!("Please provide public certificate path"))?;
+    let (keyid, keylen) = get_keyid_and_keylen_from_cert(&cert_path)
+        .with_context(|| format!("Unable to parse public certificate {}", &cert_path))?;
 
-    let hash_algo = args.next().with_context(|| format!("Please provide hash algorithm"))?;
-    let hash_algo = HashAlgo::try_from(&hash_algo[..]).with_context(|| format!("Unable to parse hash algo {}", &hash_algo))?;
+    let hash_algo = args
+        .next()
+        .with_context(|| format!("Please provide hash algorithm"))?;
+    let hash_algo = HashAlgo::try_from(&hash_algo[..])
+        .with_context(|| format!("Unable to parse hash algo {}", &hash_algo))?;
 
     let mut use_xattr = false;
 
@@ -197,13 +251,16 @@ fn main() -> Result<()> {
 
         let filepath = Path::new(&file_to_sign);
 
-        let data = fs::read(filepath).with_context(|| format!("Error reading {}", filepath.display()))?;
+        let data =
+            fs::read(filepath).with_context(|| format!("Error reading {}", filepath.display()))?;
 
-        let signature = hash_and_sign(&signkey, &hash_algo, &data, keylen).with_context(|| format!("Error signing {}", filepath.display()))?;
+        let signature = hash_and_sign(&signkey, &hash_algo, &data, keylen)
+            .with_context(|| format!("Error signing {}", filepath.display()))?;
 
         let hdr = build_ima_signature(&keyid, &hash_algo, &signature);
 
-        write_ima_sig(filepath, &hdr, !use_xattr).with_context(|| format!("Error writing signature for {}", filepath.display()))?;
+        write_ima_sig(filepath, &hdr, !use_xattr)
+            .with_context(|| format!("Error writing signature for {}", filepath.display()))?;
 
         println!("Signed {}", filepath.display());
     }
