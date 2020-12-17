@@ -170,11 +170,11 @@ fn main() -> Result<()> {
     let key_description_copy = key_description.clone();
     let signkey = Key::request::<keyutils::keytypes::Asymmetric, _, _, _>(key_description, None, None).with_context(|| format!("Unable to find key with description {}", &key_description_copy))?;
 
-    let hash_algo = args.next().with_context(|| format!("Please provide hash algorithm"))?;
-    let hash_algo = HashAlgo::try_from(&hash_algo[..]).with_context(|| format!("Unable to parse hash algo {}", &hash_algo))?;
-
     let cert_path = args.next().with_context(|| format!("Please provide public certificate path"))?;
     let keyid = get_keyid_from_cert(&cert_path).with_context(|| format!("Unable to parse public certificate {}", &cert_path))?;
+
+    let hash_algo = args.next().with_context(|| format!("Please provide hash algorithm"))?;
+    let hash_algo = HashAlgo::try_from(&hash_algo[..]).with_context(|| format!("Unable to parse hash algo {}", &hash_algo))?;
 
     let mut use_xattr = false;
 
