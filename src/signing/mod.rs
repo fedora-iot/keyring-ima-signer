@@ -1,24 +1,11 @@
-use std::convert::{TryFrom, TryInto};
-
 use crate::HashAlgo;
 
-use anyhow::{anyhow, bail, Context, Error, Result};
-use keyutils::{Key, KeyctlEncoding, KeyctlHash, PublicKeyOptions};
+use anyhow::{bail, Context, Result};
 use sha1::Sha1;
 use sha2::{Digest, Sha256};
 
-impl TryFrom<HashAlgo> for KeyctlHash {
-    type Error = Error;
-    fn try_from(ha: HashAlgo) -> Result<Self> {
-        match ha {
-            HashAlgo::Sha1 => Ok(KeyctlHash::Sha1),
-            HashAlgo::Sha256 => Ok(KeyctlHash::Sha256),
-            HashAlgo::Sha384 => Ok(KeyctlHash::Sha384),
-            HashAlgo::Sha512 => Ok(KeyctlHash::Sha512),
-            _ => Err(anyhow!("Unsupported hash algorithm {:?}", ha)),
-        }
-    }
-}
+mod keyutils;
+use keyutils::Key;
 
 fn sign_digest(
     signkey: &Key,
@@ -26,12 +13,8 @@ fn sign_digest(
     digest: &[u8],
     siglen: usize,
 ) -> Result<Vec<u8>> {
-    let options = PublicKeyOptions {
-        encoding: Some(KeyctlEncoding::RsassaPkcs1V15),
-        hash: Some((*hash_algo).try_into()?),
-    };
     let mut signature = signkey
-        .sign(&options, digest)
+        .sign(hash_algo, digest)
         .with_context(|| "Error signing data".to_string())?;
 
     // https://github.com/mathstuf/rust-keyutils/pull/55
@@ -67,6 +50,6 @@ pub(crate) fn hash_and_sign(
 }
 
 pub(crate) fn get_signing_key(description: &str) -> Result<Key> {
-    Key::request::<keyutils::keytypes::Asymmetric, _, _, _>(description, None, None)
+    Key::from_key_description(description)
         .with_context(|| "Unable to find key with description".to_string())
 }

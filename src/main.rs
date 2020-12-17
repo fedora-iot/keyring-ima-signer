@@ -45,6 +45,16 @@ impl TryFrom<&str> for HashAlgo {
     }
 }
 
+impl HashAlgo {
+    fn to_pkey_opt(&self) -> Result<&'static str> {
+        match self {
+            HashAlgo::Sha1 => Ok("sha1"),
+            HashAlgo::Sha256 => Ok("sha256"),
+            _ => Err(anyhow!("Unsupported hash algorithm: {:?}", self)),
+        }
+    }
+}
+
 fn get_keyid_and_keylen_from_cert(cert_path: &str) -> Result<(Vec<u8>, usize)> {
     let cert_contents =
         fs::read(cert_path).with_context(|| "Error reading certificate".to_string())?;
