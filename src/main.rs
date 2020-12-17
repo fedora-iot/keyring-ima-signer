@@ -187,6 +187,13 @@ fn main() -> Result<()> {
             use_xattr = true;
             continue;
         }
+        if file_to_sign == "--sigfile" {
+            use_xattr = false;
+            continue;
+        }
+        if file_to_sign == "--" {
+            continue;
+        }
 
         let filepath = Path::new(&file_to_sign);
 
