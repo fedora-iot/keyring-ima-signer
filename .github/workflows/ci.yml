@@ -4,12 +4,14 @@ on:
   - pull_request
 jobs:
   formatting:
-    name: Check formatting
+    name: Static code checks
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
     - name: Check formatting
       run: cargo fmt --all -- --check
+    - name: Check clippy
+      run: cargo clippy --all-targets --all-features -- -D clippy::all
 
   tests:
     name: Run tests
