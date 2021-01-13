@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use openssl::hash::hash;
 
 mod keyutils;
-use keyutils::Key;
+pub(crate) use keyutils::Key;
 
 pub(crate) fn hash_and_sign(signkey: &Key, hash_algo: &HashAlgo, data: &[u8]) -> Result<Vec<u8>> {
     let digest = hash(
