@@ -110,6 +110,37 @@ fn update_presigned(args: env::Args) -> Result<()> {
     Ok(())
 }
 
+fn sign_single_file(filepath: &Path, signkey: &signing::Key, keyid: &[u8], hash_algo: &HashAlgo, use_xattr: bool) -> Result<()> {
+
+    let data =
+        fs::read(filepath).with_context(|| format!("Error reading {}", filepath.display()))?;
+
+    let signature = signing::hash_and_sign(&signkey, &hash_algo, &data)
+        .with_context(|| format!("Error signing {}", filepath.display()))?;
+
+    let hdr = ima::build_signature_header(&keyid, &hash_algo, &signature);
+
+    ima::write_signature(filepath, &hdr, !use_xattr)
+        .with_context(|| format!("Error writing signature for {}", filepath.display()))
+}
+
+fn sign_recursive(filepath: &Path, signkey: &signing::Key, keyid: &[u8], hash_algo: &HashAlgo, use_xattr: bool) -> Result<()> {
+    for child in fs::read_dir(filepath)? {
+        let child = child?;
+
+        if child.file_type()?.is_dir() {
+            sign_recursive(&child.path(), signkey, keyid, hash_algo, use_xattr)?;
+            continue;
+        }
+        if child.file_type()?.is_symlink() {
+            return Ok(())
+        }
+        // We are just a file
+        sign_single_file(&child.path(), signkey, keyid, hash_algo, use_xattr)?;
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let mut args = env::args();
     // Skip the path
@@ -137,6 +168,7 @@ fn main() -> Result<()> {
         .with_context(|| format!("Unable to parse hash algo {}", &hash_algo))?;
 
     let mut use_xattr = false;
+    let mut do_recursive = false;
 
     for file_to_sign in args {
         if file_to_sign == "--xattr" {
@@ -147,24 +179,19 @@ fn main() -> Result<()> {
             use_xattr = false;
             continue;
         }
+        if file_to_sign == "--recursive" || file_to_sign == "-r" {
+            do_recursive = true;
+            continue;
+        }
         if file_to_sign == "--" {
             continue;
         }
 
-        let filepath = Path::new(&file_to_sign);
-
-        let data =
-            fs::read(filepath).with_context(|| format!("Error reading {}", filepath.display()))?;
-
-        let signature = signing::hash_and_sign(&signkey, &hash_algo, &data)
-            .with_context(|| format!("Error signing {}", filepath.display()))?;
-
-        let hdr = ima::build_signature_header(&keyid, &hash_algo, &signature);
-
-        ima::write_signature(filepath, &hdr, !use_xattr)
-            .with_context(|| format!("Error writing signature for {}", filepath.display()))?;
-
-        println!("Signed {}", filepath.display());
+        if do_recursive {
+            sign_recursive(Path::new(&file_to_sign), &signkey, &keyid, &hash_algo, use_xattr)?;
+        } else {
+            sign_single_file(Path::new(&file_to_sign), &signkey, &keyid, &hash_algo, use_xattr)?;
+        }
     }
 
     Ok(())
