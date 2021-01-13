@@ -49,9 +49,15 @@ pub(crate) fn write_signature(filename: &Path, imahdr: &[u8], sigfile: bool) -> 
         file.write_all(imahdr)
             .with_context(|| format!("Unable to write signature file {}", &sigfilename))?;
         file.sync_all()
-            .with_context(|| format!("Unable to sync signature file {}", &sigfilename))
+            .with_context(|| format!("Unable to sync signature file {}", &sigfilename))?;
+
+        println!("{}", sigfilename);
     } else {
         xattr::set(filename, XATTR_IMA, imahdr)
-            .with_context(|| "Unable to set the IMA xattr".to_string())
+            .with_context(|| "Unable to set the IMA xattr".to_string())?;
+
+        println!("{}", filename.display());
     }
+
+    Ok(())
 }
