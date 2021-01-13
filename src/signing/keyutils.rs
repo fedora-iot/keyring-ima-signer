@@ -109,7 +109,7 @@ pub(crate) struct Key {
 }
 
 impl Key {
-    pub(crate) fn from_key_description(description: &str) -> Result<Self> {
+    pub(super) fn from_key_description(description: &str) -> Result<Self> {
         let type_cstr =
             cstring("asymmetric").with_context(|| "Error building type cstring".to_string())?;
         let desc_cstr = cstring(description)
